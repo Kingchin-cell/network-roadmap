@@ -9,37 +9,60 @@
 
 ## 一、最终结论（先看这个）
 
-**在 Windows 11 24H2 上让 eNSP 可用，只需要两步：**
+**在 Windows 11 24H2 上让 eNSP 可用，唯一有效的方法是微软的 DG_Readiness_Tool，
+而且必须用管理员权限运行。**
+
+### 它到底做了什么（2026-11-24 彻底查明）
 
 ```
-① 用微软官方工具 DG_Readiness_Tool_v3.6.ps1 -Disable
-② 重启时，在 "Credential Guard Opt-out Tool" 界面按 F3
+DG_Readiness_Tool_v3.6.ps1 -Disable
+        ↓
+① 创建/复用一个特殊引导项 {0cb3b571-...}，description = "DGOptOut"
+   path = \EFI\Microsoft\Boot\SecConfig.efi
+   loadoptions = DISABLE-LSA-ISO,DISABLE-VBS
+        ↓
+② 设置 bcdedit /set "{bootmgr}" bootsequence "{0cb3b571-...}"
+   → 让系统【下次启动时先运行 SecConfig.efi】
+        ↓
+③ 重启时，SecConfig.efi 先于 Windows 运行 → 显示黑底 F3 界面
+        ↓
+④ 按 F3 → 它写入禁用标志 → 清除 bootsequence → 自动再重启一次
+        ↓
+⑤ 进系统后 VBS 被禁用 → hypervisor 不加载 → VirtualBox 抢到 VT-x → eNSP 可用 ✅
 ```
 
-**其他所有方法（关内存完整性、关 VBS 注册表、禁服务、关 Secure Boot、组策略）
-在 24H2 上都不够。**
+### ⚠️ 两个关键点（踩过坑才知道）
 
-### ⚠️ 最重要的一条：**这个修复只对「下一次启动」有效**
-
-2026-11-24 实测确认：
-
-| 操作 | 结果 |
+| 关键点 | 说明 |
 |---|---|
-| 跑 DG 工具 → 重启 → 按 F3 | ✅ eNSP 可用 |
-| 之后再普通重启（不跑工具） | ❌ **失效，hypervisor 又回来了** |
+| **① 必须管理员权限** | 普通权限跑 DG 工具，它会打印 `Not an Admin user, pls execute this script as an Admin user exiting...` 然后**什么都不做**。之前的多次失败全是这个原因。 |
+| **② 只对"下一次启动"有效** | 按 F3 后 bootsequence 被清除，所以再普通重启就失效了。**每次要用 eNSP 前都要重跑一遍。** |
 
-**所以实际用法是：**
+### 验证方法（判断重启后会不会出现 F3 界面）
+
+```cmd
+bcdedit /enum {bootmgr} | findstr bootsequence
+```
+
+- **有输出**（形如 `bootsequence {0cb3b571-...}`）→ 重启**会**出现 F3 界面 ✅
+- **没有输出** → 重启**不会**出现 F3 界面，白跑 ⚠️
+
+### 实际使用流程
 
 ```
 每次想用 eNSP 时：
-   ① 双击桌面「修复eNSP环境.ps1」（右键 → 用 PowerShell 运行）
-   ② 脚本最后问"现在重启吗" → 输 y 自动重启
-   ③ 重启时看到黑底界面 → 按 F3 → 按任意键
-   ④ 进系统后 eNSP 就能用
+   ① 右键桌面「修复eNSP环境.ps1」→ 使用 PowerShell 运行
+   ② 弹 UAC → 点【是】（否则无效！）
+   ③ 脚本会显示 "[3/4] 验证 bootsequence ✅ 已设置"
+      → 看到这个才说明重启会有 F3 界面
+   ④ 按回车关窗口 → 手动重启（开始 → 电源 → 重启）
+   ⑤ 黑底界面 → 按 F3 → 再按任意键
+   ⑥ 可能自动再重启一次 → 等着
+   ⑦ 进系统 → eNSP 能用 ✅
 ```
 
-**省事的技巧**：平时用完电脑用「**睡眠**」而不是「关机/重启」，配置就不会丢。
-只有真需要重启时，才走一遍上面的流程。
+**省事的技巧**：平时用完电脑用「**睡眠**」而不是「关机/重启」，
+只有当真正重启过之后，才需要再跑一次脚本。
 
 ---
 
