@@ -1,0 +1,19 @@
+# Obsidian（如果用它打开本文件夹）
+.obsidian/
+
+# 系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 临时
+*.tmp
+*.bak
+~$*
+
+# 大文件（PDF 原件、视频缓存之类不进仓库）
+*.pdf
+*.mp4
+*.zip
+
+# ⚠️ 注意：.topo 拓扑文件、.cfg 配置、.md 笔记都是核心资产，必须提交
